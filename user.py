@@ -23,7 +23,7 @@ class FeedbackApp(ctk.CTk):
         self.setup_login_frame()
 
     def init_db(self):
-        # Connect to SQLite database
+    # Connect to SQLite database
         self.conn = sqlite3.connect('feedback_app.db')
         self.cursor = self.conn.cursor()
 
@@ -52,11 +52,44 @@ class FeedbackApp(ctk.CTk):
                 instructor TEXT,
                 feedback TEXT,
                 rating INTEGER,
+                anonymous INTEGER DEFAULT 0,
+                upvotes INTEGER DEFAULT 0,
+                downvotes INTEGER DEFAULT 0,
                 FOREIGN KEY(user_id) REFERENCES Users(id)
             )
         ''')
 
+        # Check if the 'anonymous' column exists, if not, add it
+        self.cursor.execute("PRAGMA table_info(Feedback)")
+        columns = [column[1] for column in self.cursor.fetchall()]
+        if 'anonymous' not in columns:
+            self.cursor.execute('ALTER TABLE Feedback ADD COLUMN anonymous INTEGER DEFAULT 0')
+
+        # Check if the 'upvotes' column exists, if not, add it
+        if 'upvotes' not in columns:
+            self.cursor.execute('ALTER TABLE Feedback ADD COLUMN upvotes INTEGER DEFAULT 0')
+
+        # Check if the 'downvotes' column exists, if not, add it
+        if 'downvotes' not in columns:
+            self.cursor.execute('ALTER TABLE Feedback ADD COLUMN downvotes INTEGER DEFAULT 0')
+
+        # Drop the existing Votes table if it exists
+        self.cursor.execute('DROP TABLE IF EXISTS Votes')
+
+        # Create Votes table
+        self.cursor.execute('''
+            CREATE TABLE Votes (
+                id INTEGER PRIMARY KEY AUTOINCREMENT,
+                user_id INTEGER,
+                feedback_id INTEGER,
+                vote_type TEXT,
+                FOREIGN KEY(user_id) REFERENCES Users(id),
+                FOREIGN KEY(feedback_id) REFERENCES Feedback(id)
+            )
+        ''')
+
         self.conn.commit()
+
 
     def setup_login_frame(self):
         # Clear the current frame if it exists
@@ -139,6 +172,8 @@ class FeedbackApp(ctk.CTk):
         self.register_blood_group_label = ctk.CTkLabel(self.register_frame, text="Blood Group")
         self.register_blood_group_label.grid(row=8, column=0, padx=(50, 10), pady=(20, 0), sticky="w")
         self.register_blood_group_entry = ctk.CTkEntry(self.register_frame)
+        self.register_blood_group_label.grid(row=8, column=0, padx=(50, 10), pady=(20, 0), sticky="w")
+        self.register_blood_group_entry = ctk.CTkEntry(self.register_frame)
         self.register_blood_group_entry.grid(row=8, column=1, padx=(100, 100), pady=(20, 0), sticky="ew")
 
         self.register_button = ctk.CTkButton(self.register_frame, text="Register", width=100, command=self.register)
@@ -162,7 +197,7 @@ class FeedbackApp(ctk.CTk):
 
         try:
             self.cursor.execute('''
-                        INSERT INTO Users (name, email, password, number, department, batch, roll, reg_no, blood_group)
+                INSERT INTO Users (name, email, password, number, department, batch, roll, reg_no, blood_group)
                 VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
             ''', (name, email, password, number, department, batch, roll, reg_no, blood_group))
             self.conn.commit()
@@ -205,6 +240,9 @@ class FeedbackApp(ctk.CTk):
 
         self.history_button = ctk.CTkButton(self.dashboard_frame, text="Feedback History", command=self.show_feedback_history)
         self.history_button.pack(pady=10)
+
+        self.all_feedback_button = ctk.CTkButton(self.dashboard_frame, text="Show All Feedback", command=self.show_all_feedback)
+        self.all_feedback_button.pack(pady=10)
 
     def show_profile(self):
         # Clear the current frame if it exists
@@ -273,6 +311,10 @@ class FeedbackApp(ctk.CTk):
         self.rating_entry = ctk.CTkEntry(self.feedback_frame)
         self.rating_entry.pack(pady=5)
 
+        self.anonymous_var = ctk.IntVar()
+        self.anonymous_check = ctk.CTkCheckBox(self.feedback_frame, text="Submit Anonymously", variable=self.anonymous_var)
+        self.anonymous_check.pack(pady=5)
+
         self.submit_button = ctk.CTkButton(self.feedback_frame, text="Submit", command=self.submit_feedback)
         self.submit_button.pack(pady=10)
 
@@ -284,12 +326,15 @@ class FeedbackApp(ctk.CTk):
         instructor = self.instructor_entry.get()
         feedback = self.feedback_entry.get()
         rating = self.rating_entry.get()
+        anonymous = self.anonymous_var.get()
+
+        user_id = None if anonymous else self.user_id
 
         # Save feedback to the database
         self.cursor.execute('''
-            INSERT INTO Feedback (user_id, course, instructor, feedback, rating)
-            VALUES (?, ?, ?, ?, ?)
-        ''', (self.user_id, course, instructor, feedback, rating))
+            INSERT INTO Feedback (user_id, course, instructor, feedback, rating, anonymous)
+            VALUES (?, ?, ?, ?, ?, ?)
+        ''', (user_id, course, instructor, feedback, rating, anonymous))
         self.conn.commit()
 
         tkinter.messagebox.showinfo("Feedback", "Feedback Submitted!")
@@ -308,12 +353,13 @@ class FeedbackApp(ctk.CTk):
         self.history_label.pack(pady=10)
 
         # Load feedback history from the database
-        self.cursor.execute('SELECT id, course, instructor, feedback, rating FROM Feedback WHERE user_id = ?', (self.user_id,))
+        self.cursor.execute('SELECT id, course, instructor, feedback, rating, anonymous FROM Feedback WHERE user_id = ? OR anonymous = 1', (self.user_id,))
         feedbacks = self.cursor.fetchall()
 
         for feedback in feedbacks:
-            feedback_id, course, instructor, feedback_text, rating = feedback
-            feedback_text = f"Course: {course}, Instructor: {instructor}, Feedback: {feedback_text}, Rating: {rating}/5"
+            feedback_id, course, instructor, feedback_text, rating, anonymous = feedback
+            anonymity_status = "Anonymous" if anonymous else "User"
+            feedback_text = f"Course: {course}, Instructor: {instructor}, Feedback: {feedback_text}, Rating: {rating}/5, Status: {anonymity_status}"
             feedback_label = ctk.CTkLabel(self.history_frame, text=feedback_text)
             feedback_label.pack(pady=5)
 
@@ -392,6 +438,74 @@ class FeedbackApp(ctk.CTk):
 
         tkinter.messagebox.showinfo("Feedback", "Feedback Deleted!")
         self.show_feedback_history()
+
+    def show_all_feedback(self):
+    # Clear the current frame if it exists
+        if self.current_frame is not None:
+            self.current_frame.pack_forget()
+
+        self.all_feedback_frame = ctk.CTkFrame(self)
+        self.all_feedback_frame.pack(fill="both", expand=True, padx=20, pady=20)
+        self.current_frame = self.all_feedback_frame
+
+        self.all_feedback_label = ctk.CTkLabel(self.all_feedback_frame, text="All Feedback")
+        self.all_feedback_label.pack(pady=10)
+
+        # Load all feedback from the database
+        self.cursor.execute('''
+            SELECT Feedback.id, Users.email, Feedback.course, Feedback.instructor, Feedback.feedback, Feedback.rating, Feedback.anonymous, Feedback.upvotes, Feedback.downvotes
+            FROM Feedback 
+            LEFT JOIN Users ON Feedback.user_id = Users.id
+        ''')
+        feedbacks = self.cursor.fetchall()
+
+        for feedback in feedbacks:
+            feedback_id, email, course, instructor, feedback_text, rating, anonymous, upvotes, downvotes = feedback
+            user_display = "Anonymous" if anonymous else email
+
+            feedback_frame = ctk.CTkFrame(self.all_feedback_frame, corner_radius=10)
+            feedback_frame.pack(fill="x", expand=True, padx=10, pady=10)
+
+            feedback_text_label = ctk.CTkLabel(feedback_frame, text=f"User: {user_display}\nCourse: {course}\nInstructor: {instructor}\nFeedback: {feedback_text}\nRating: {rating}/5\nUpvotes: {upvotes}\nDownvotes: {downvotes}", anchor="w", justify="left")
+            feedback_text_label.pack(pady=5)
+
+            icon_frame = ctk.CTkFrame(feedback_frame)
+            icon_frame.pack(fill="x", expand=True)
+
+            upvote_icon = ctk.CTkLabel(icon_frame, text="👍", cursor="hand2")
+            upvote_icon.bind("<Button-1>", lambda event, fid=feedback_id: self.vote_feedback(fid, "upvote"))
+            upvote_icon.pack(side="left", padx=10, pady=2)
+
+            downvote_icon = ctk.CTkLabel(icon_frame, text="👎", cursor="hand2")
+            downvote_icon.bind("<Button-1>", lambda event, fid=feedback_id: self.vote_feedback(fid, "downvote"))
+            downvote_icon.pack(side="left", padx=10, pady=2)
+
+        self.back_button = ctk.CTkButton(self.all_feedback_frame, text="Back to Dashboard", command=self.setup_dashboard)
+        self.back_button.pack(pady=10)
+
+    def vote_feedback(self, feedback_id, vote_type):
+        # Check if the user has already voted on this feedback
+        self.cursor.execute('SELECT * FROM Votes WHERE user_id = ? AND feedback_id = ?', (self.user_id, feedback_id))
+        vote = self.cursor.fetchone()
+
+        if vote:
+            tkinter.messagebox.showerror("Vote", "You have already voted on this feedback!")
+            return
+
+        # Add vote to the Votes table
+        self.cursor.execute('INSERT INTO Votes (user_id, feedback_id, vote_type) VALUES (?, ?, ?)', (self.user_id, feedback_id, vote_type))
+
+        # Update the upvotes or downvotes count in the Feedback table
+        if vote_type == "upvote":
+            self.cursor.execute('UPDATE Feedback SET upvotes = upvotes + 1 WHERE id = ?', (feedback_id,))
+        elif vote_type == "downvote":
+            self.cursor.execute('UPDATE Feedback SET downvotes = downvotes + 1 WHERE id = ?', (feedback_id,))
+
+        self.conn.commit()
+
+        tkinter.messagebox.showinfo("Vote", "Your vote has been recorded!")
+        self.show_all_feedback()
+
 
 if __name__ == "__main__":
     app = FeedbackApp()
