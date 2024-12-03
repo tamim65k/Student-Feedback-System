@@ -11,6 +11,8 @@ A comprehensive student feedback system built using CustomTkinter and SQLite. Th
 - **Profile**: View user profile details.
 - **Give Feedback**: Submit feedback for courses and instructors along with a rating out of 5.
 - **Feedback History**: View previously submitted feedbacks with options to edit or delete them.
+- **Feedback voting**: User can upvote and downvote on each feedback from other.
+- **Anonymous Feedback**: User can give feedback anonymously.
 
 ### Admin Features
 
@@ -18,6 +20,7 @@ A comprehensive student feedback system built using CustomTkinter and SQLite. Th
 - **View Users**: Admin can view all registered users and their details.
 - **Manage Feedback**: Admin can view, edit, or delete any feedback entries.
 - **Generate Reports**: Admin can generate and download reports on feedback for analysis.
+- **Showing Voting Number**: View total voting provided by user.
 
 ## Getting Started
 
