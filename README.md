@@ -31,4 +31,6 @@ A comprehensive student feedback system built using CustomTkinter and SQLite. Th
 
 1. Clone the repository:
    git clone https://github.com/your-username/student-feedback-system.git
+   
    cd student-feedback-system
+   
