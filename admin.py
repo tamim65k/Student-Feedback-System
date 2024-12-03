@@ -4,7 +4,7 @@ import sqlite3
 
 # Set the appearance mode to "Light"
 ctk.set_appearance_mode("Light")
-ctk.set_default_color_theme("blue")  # You can change the theme if you like
+ctk.set_default_color_theme("blue")
 
 class FeedbackApp(ctk.CTk):
     def __init__(self):
@@ -27,16 +27,23 @@ class FeedbackApp(ctk.CTk):
         self.conn = sqlite3.connect('feedback_app.db')
         self.cursor = self.conn.cursor()
 
-        # Create Users table
+        # Create Users table if it does not exist
         self.cursor.execute('''
             CREATE TABLE IF NOT EXISTS Users (
                 id INTEGER PRIMARY KEY AUTOINCREMENT,
                 email TEXT UNIQUE NOT NULL,
-                password TEXT NOT NULL
+                password TEXT NOT NULL,
+                name TEXT,
+                number TEXT,
+                department TEXT,
+                batch TEXT,
+                roll TEXT,
+                reg_no TEXT,
+                blood_group TEXT
             )
         ''')
 
-        # Create Feedback table
+        # Create Feedback table if it does not exist
         self.cursor.execute('''
             CREATE TABLE IF NOT EXISTS Feedback (
                 id INTEGER PRIMARY KEY AUTOINCREMENT,
@@ -44,9 +51,27 @@ class FeedbackApp(ctk.CTk):
                 course TEXT,
                 instructor TEXT,
                 feedback TEXT,
+                rating INTEGER,
+                anonymous INTEGER DEFAULT 0,
+                upvotes INTEGER DEFAULT 0,
+                downvotes INTEGER DEFAULT 0,
                 FOREIGN KEY(user_id) REFERENCES Users(id)
             )
         ''')
+
+        # Check if the 'anonymous' column exists, if not, add it
+        self.cursor.execute("PRAGMA table_info(Feedback)")
+        columns = [column[1] for column in self.cursor.fetchall()]
+        if 'anonymous' not in columns:
+            self.cursor.execute('ALTER TABLE Feedback ADD COLUMN anonymous INTEGER DEFAULT 0')
+
+        # Check if the 'upvotes' column exists, if not, add it
+        if 'upvotes' not in columns:
+            self.cursor.execute('ALTER TABLE Feedback ADD COLUMN upvotes INTEGER DEFAULT 0')
+
+        # Check if the 'downvotes' column exists, if not, add it
+        if 'downvotes' not in columns:
+            self.cursor.execute('ALTER TABLE Feedback ADD COLUMN downvotes INTEGER DEFAULT 0')
 
         self.conn.commit()
 
@@ -161,16 +186,21 @@ class FeedbackApp(ctk.CTk):
 
         # Load all feedback from the database
         self.cursor.execute('''
-            SELECT Users.email, Feedback.course, Feedback.instructor, Feedback.feedback 
+            SELECT Feedback.id, Users.email, Feedback.course, Feedback.instructor, Feedback.feedback, Feedback.rating, Feedback.anonymous, Feedback.upvotes, Feedback.downvotes
             FROM Feedback 
-            JOIN Users ON Feedback.user_id = Users.id
+            LEFT JOIN Users ON Feedback.user_id = Users.id
         ''')
         feedbacks = self.cursor.fetchall()
 
         for feedback in feedbacks:
-            feedback_text = f"User: {feedback[0]}, Course: {feedback[1]}, Instructor: {feedback[2]}, Feedback: {feedback[3]}"
-            feedback_label = ctk.CTkLabel(self.all_feedback_frame, text=feedback_text)
-            feedback_label.pack(pady=5)
+            feedback_id, email, course, instructor, feedback_text, rating, anonymous, upvotes, downvotes = feedback
+            user_display = "Anonymous" if anonymous else email
+
+            feedback_frame = ctk.CTkFrame(self.all_feedback_frame, corner_radius=10)
+            feedback_frame.pack(fill="x", expand=True, padx=10, pady=10)
+
+            feedback_text_label = ctk.CTkLabel(feedback_frame, text=f"User: {user_display}\nCourse: {course}\nInstructor: {instructor}\nFeedback: {feedback_text}\nRating: {rating}/5\nUpvotes: {upvotes}\nDownvotes: {downvotes}", anchor="w", justify="left")
+            feedback_text_label.pack(pady=5)
 
         self.back_button = ctk.CTkButton(self.all_feedback_frame, text="Back to Dashboard", command=self.setup_dashboard)
         self.back_button.pack(pady=10)
